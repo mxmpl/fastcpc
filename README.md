@@ -22,6 +22,10 @@ After installing the package, you have access to the `fastcpc` command with two 
   - Or launch it with `torchrun`.
 - `fastcpc extract`: extract features with a pretrained model. First step before ABX evaluation.
 
+The number of options is intentionally limited to keep the code simple.
+If you need other values than the [defaults](./src/fastcpc/config.py), create a JSON file
+specifying your changes and set the `$FASTCPC_CONFIG` environment variable to its path.
+
 To load a pretrained model:
 ```python
 from fastcpc.model import CPC
