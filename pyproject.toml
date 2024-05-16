@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastcpc"
+version = "0.1"
+requires-python = ">=3.11"
+authors = [{ name = "Maxime Poli" }]
+dependencies = [
+    "accelerate",
+    "huggingface_hub",
+    "torch>=2.2.2",
+    "torchaudio",
+    "tqdm",
+    "numpy",
+    "more_itertools",
+    "wandb",
+]
+
+[project.scripts]
+fastcpc = "fastcpc.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 119
+
+[tool.ruff.isort]
+known-first-party = ["fastcpc"]
