@@ -58,7 +58,6 @@ def train(run_name: str, workdir: str, train_manifest: str, val_manifest: str, p
     val_dataset = AudioSequenceDataset(val_manifest)
     val_loader = DataLoader(val_dataset, shuffle=False, batch_size=CONFIG.batch_size, num_workers=CONFIG.num_workers)
 
-    accelerator.print(f"Train duration in manifest file: {manifest_duration_in_seconds(train_manifest) / 3600:.2f}h")
     accelerator.print(f"Train duration after splitting: {train_dataset.duration_in_seconds / 3600:.2f}h")
     accelerator.print(f"Train duration after batching: {train_sampler.duration_in_seconds / 3600:.2f}h")
 

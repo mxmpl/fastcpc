@@ -1,11 +1,10 @@
 import abc
 import copy
-import csv
 from os import PathLike
-from pathlib import Path
 from typing import Any, Callable, Iterator
 
 import numpy as np
+import polars as pl
 import torch
 import torchaudio
 from more_itertools import chunked
@@ -42,18 +41,21 @@ def map_key_to_indices(data: list[dict[str, Any]], key: str) -> dict[str, list[i
 
 
 def build_sequences(manifest_path: PathLike, window_size: int) -> list[Metadata]:
-    sequences, fileids = [], set()
-    with open(manifest_path, "r", newline="") as csvfile:
-        reader = csv.DictReader(csvfile)
-        assert {"fileid", "path", "num_frames", "speaker"} <= set(reader.fieldnames), "Invalid manifest file"
-        for row in reader:
-            fileid, path = row["fileid"], str(Path(row["path"]).resolve())
-            if fileid in fileids:
-                raise ValueError("Duplicate file identifier")
-            fileids.add(fileid)
-            for offset in split_in_windows(int(row["num_frames"]), window_size, CONFIG.allow_overlap):
-                sequences.append({"fileid": fileid, "path": path, "offset": offset, "speaker": row["speaker"]})
-    return sequences
+    df = pl.read_csv(manifest_path)
+    assert {"fileid", "path", "num_frames", "speaker"} <= set(df.columns), "Invalid manifest file"
+    assert len(df["fileid"].unique()) == len(df), "Duplicate file identifier"
+    return (
+        df.with_columns(
+            pl.col("num_frames").map_elements(
+                lambda num_frames: split_in_windows(num_frames, window_size, CONFIG.allow_overlap),
+                return_dtype=list[int],
+            ),
+            pl.col("speaker").cast(pl.Utf8),
+        )
+        .rename({"num_frames": "offset"})
+        .explode("offset")
+        .to_dicts()
+    )
 
 
 class SameAttributeBatchSampler(Sampler[list[int]], abc.ABC):

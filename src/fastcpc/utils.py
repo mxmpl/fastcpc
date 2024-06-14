@@ -1,4 +1,3 @@
-import csv
 import warnings
 from pathlib import Path
 from typing import Iterable
@@ -13,11 +12,6 @@ def previous_checkpoint(run_dir: Path) -> Path | None:
     if not ckpts:
         return None
     return max(ckpts, key=lambda x: int(x.stem.removeprefix("epoch_")))
-
-
-def manifest_duration_in_seconds(manifest_path: Path) -> float:
-    with open(manifest_path, "r") as file:
-        return sum(int(row["num_frames"]) for row in csv.DictReader(file)) / CONFIG.sample_rate
 
 
 def params_norm(
