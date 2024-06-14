@@ -1,6 +1,5 @@
 import dataclasses
 import importlib
-import os
 import time
 from pathlib import Path
 
@@ -84,14 +83,31 @@ def train(run_name: str, workdir: str, train_manifest: str, val_manifest: str, p
         + [f"train/acc_{i}" for i in range(CONFIG.num_predicts)]
     )
     pbar = tqdm(total=CONFIG.num_epochs * len(train_loader), initial=step)
+    params = dict(model.named_parameters())
+
+    def this_task_loss(task_train, task_val):
+        #TODO: verify the scope of "params": am I overriding it?
+        def inner_loss(params, past, future):
+            predictions, latent = torch.func.functional_call(model, params, (past, future))
+            losses, _ = criterion(predictions, latent)
+            return losses.sum()
+
+        new_params = params
+        for past, future in task_train:
+            grads = torch.func.grad(inner_loss)(new_params, past, future)
+            new_params = {k: v - CONFIG.learning_rate * g for (k, v), g in zip(params.items(), grads)}
+        val_loss = 0.0
+        for past, future in task_val:
+            val_loss += inner_loss(params, past, future)
+        return val_loss
+
     for epoch in range(initial_epoch, CONFIG.num_epochs):
         pbar.set_description("Training")
         model.train()
         tick = time.perf_counter()
-        for past, future in train_loader:
+        for batched_tasks_train, batched_tasks_val in train_loader:
             records["train/data_time"].update(time.perf_counter() - tick)
-            predictions, latent = model(past, future)
-            losses, accuracies = criterion(predictions, latent)
+            losses = torch.func.vmap(this_task_loss)(batched_tasks_train, batched_tasks_val).mean()
             accelerator.backward(losses.sum())
             if accelerator.sync_gradients:
                 total_norm = accelerator.clip_grad_norm_(model.parameters(), max_norm=CONFIG.max_grad_norm)
@@ -108,8 +124,7 @@ def train(run_name: str, workdir: str, train_manifest: str, val_manifest: str, p
             records["train/batch_time"].update(time.perf_counter() - tick)
             step += 1
             pbar.set_postfix(epoch=epoch, loss=records["train/loss_mean"].avg, acc=records["train/acc_mean"].avg)
-            if os.isatty(1) or step % CONFIG.log_interval == 0:
-                pbar.update()
+            pbar.update()
             if step % CONFIG.log_interval == 0:
                 accelerator.log(records.log() | {"epoch": epoch, "train/lr": lr}, step)
             tick = time.perf_counter()
