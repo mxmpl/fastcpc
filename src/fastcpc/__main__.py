@@ -1,8 +1,10 @@
+"""Main entry point."""
+
 import argparse
 from importlib.metadata import version
 
 
-def parser_train(subparsers) -> None:
+def parser_train(subparsers) -> None:  # noqa: ANN001
     parser = subparsers.add_parser("train", description="Train a CPC model")
     parser.add_argument("run", type=str, help="name of the current run")
     parser.add_argument("workdir", type=str, help="path to the working directory")
@@ -11,7 +13,7 @@ def parser_train(subparsers) -> None:
     parser.add_argument("--project", type=str, default="cpc", help="name of the project (default: %(default)s)")
 
 
-def parser_extract_features(subparsers) -> None:
+def parser_extract_features(subparsers) -> None:  # noqa: ANN001
     parser = subparsers.add_parser("extract", description="Extract features with a pretrained CPC model")
     parser.add_argument("model", type=str, help="path to the model checkpoint")
     parser.add_argument("manifest", type=str, help="path to the manifest file")

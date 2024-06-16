@@ -1,4 +1,5 @@
-"""Adapted from https://github.com/pytorch/pytorch/blob/main/benchmarks/gpt_fast/model.py"""
+"""Adapted from `https://github.com/pytorch/pytorch/blob/main/benchmarks/gpt_fast/model.py`."""
+
 import torch
 from torch import Tensor
 
@@ -8,8 +9,7 @@ def precompute_freqs_cis(seq_len: int, n_elem: int, base: int = 10000) -> Tensor
     t = torch.arange(seq_len, device=freqs.device)
     freqs = torch.outer(t, freqs)
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs)
-    cache = torch.stack([freqs_cis.real, freqs_cis.imag], dim=-1)
-    return cache
+    return torch.stack([freqs_cis.real, freqs_cis.imag], dim=-1)
 
 
 def apply_rotary_emb(x: Tensor, freqs_cis: Tensor) -> Tensor:

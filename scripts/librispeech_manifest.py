@@ -1,3 +1,5 @@
+"""Small utility to build Librispeech manifest files."""
+
 import argparse
 import csv
 from pathlib import Path
@@ -11,7 +13,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     root = Path(args.root).resolve()
 
-    with open(args.manifest, "w", newline="") as csvfile:
+    with Path(args.manifest).open("w", newline="") as csvfile:
         fieldnames = ["fileid", "path", "num_frames", "speaker"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()

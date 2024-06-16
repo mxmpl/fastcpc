@@ -1,6 +1,8 @@
+"""Various utilities."""
+
 import warnings
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 import torch
 
@@ -14,19 +16,23 @@ def previous_checkpoint(run_dir: Path) -> Path | None:
     return max(ckpts, key=lambda x: int(x.stem.removeprefix("epoch_")))
 
 
+class NonFiniteError(Exception):
+    """Non finite values were found."""
+
+
 def params_norm(
-    params: torch.Tensor | Iterable[torch.Tensor], norm_type: float = 2.0, error_if_nonfinite: bool = False
+    params: torch.Tensor | Iterable[torch.Tensor], norm_type: float = 2.0, *, error_if_nonfinite: bool = False
 ) -> float:
     if isinstance(params, torch.Tensor):
         params = [params]
     total_norm = torch.linalg.norm(torch.stack([torch.linalg.vector_norm(p, norm_type) for p in params]), norm_type)
     if error_if_nonfinite and torch.logical_or(total_norm.isnan(), total_norm.isinf()):
-        raise ValueError("Parameters contain non-finite values")
+        raise NonFiniteError
     return total_norm.item()
 
 
 class AverageMeter:
-    """Computes and stores the average and current value"""
+    """Computes and stores the average and current value."""
 
     def __init__(self) -> None:
         self.reset()
@@ -80,5 +86,6 @@ def assert_compatibility(window_size: int, num_predicts: int) -> None:
             "Incompatible parameters\n"
             + warning
             + " Either use the default value(s), or change the global configuration by setting"
-            " `FASTCPC_CONFIG` to your JSON config file."
+            " `FASTCPC_CONFIG` to your JSON config file.",
+            stacklevel=1,
         )

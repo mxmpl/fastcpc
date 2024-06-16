@@ -35,7 +35,6 @@ LAUNCHER="python -u -m accelerate.commands.launch \
     --main_process_ip $MASTER_ADDR \
     --main_process_port $MASTER_PORT \
     --machine_rank \$SLURM_PROCID \
-    --role \$(hostname -s): --tee 3 \
     --no_python \
     "
 

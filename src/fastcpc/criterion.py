@@ -1,6 +1,8 @@
+"""CPC criterion."""
+
 import torch
 from torch import nn
-from torch.nn import functional as F
+from torch.nn import functional as F  # noqa: N812
 
 from .config import CONFIG
 
@@ -8,6 +10,8 @@ __all__ = ["CPCCriterion"]
 
 
 class CPCCriterion(nn.Module):
+    """The criterion computes the CPC loss function."""
+
     def __init__(self, generator: torch.Generator) -> None:
         super().__init__()
         self.generator = generator
@@ -41,10 +45,7 @@ class CPCCriterion(nn.Module):
 
         outputs = []
         for k in range(1, CONFIG.num_predicts + 1):
-            if k < CONFIG.num_predicts:
-                pos_seq = batch[:, k : -(CONFIG.num_predicts - k)]
-            else:
-                pos_seq = batch[:, k:]
+            pos_seq = batch[:, k : -(CONFIG.num_predicts - k)] if k < CONFIG.num_predicts else batch[:, k:]
             pos_seq = pos_seq.view(batch_size, 1, pos_seq.size(1), dim)
             full_seq = torch.cat((pos_seq, neg_ext), dim=1)  # Add the positive sample to the first position
             outputs.append(full_seq)

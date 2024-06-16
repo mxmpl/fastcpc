@@ -1,20 +1,23 @@
+"""Training pipeline."""
+
 import dataclasses
 import importlib
+import os
 import time
 from pathlib import Path
 
 import torch
 from accelerate import Accelerator
-from accelerate.utils import tqdm
 from torch.optim import Adam, lr_scheduler
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from .augmentation import PitchReverbAugment
 from .config import CONFIG
 from .criterion import CPCCriterion
 from .data import AudioSequenceDataset, SameSpeakerBatchSampler
 from .model import CPC
-from .utils import Records, manifest_duration_in_seconds, params_norm, previous_checkpoint
+from .utils import Records, params_norm, previous_checkpoint
 
 __all__ = ["train"]
 
@@ -49,7 +52,7 @@ def train(run_name: str, workdir: str, train_manifest: str, val_manifest: str, p
     seed = CONFIG.random_seed + accelerator.process_index
     model = CPC()
     criterion = CPCCriterion(torch.Generator(device=accelerator.device).manual_seed(seed))
-    optimizer = Adam(model.parameters(), lr=CONFIG.learning_rate * accelerator.num_processes)
+    optimizer = Adam(model.parameters(), lr=CONFIG.learning_rate)
     scheduler = lr_scheduler.LinearLR(optimizer, start_factor=0.1, end_factor=1, total_iters=CONFIG.scheduler_iters)
     transform = PitchReverbAugment(random_seed=seed)
     train_dataset = AudioSequenceDataset(train_manifest, transform=transform)
@@ -71,17 +74,20 @@ def train(run_name: str, workdir: str, train_manifest: str, val_manifest: str, p
         initial_epoch = int(ckpt.stem.removeprefix("epoch_"))
         step = len(train_loader) * initial_epoch
         train_loader.iteration = initial_epoch
-        train_loader.batch_sampler.batch_sampler.set_epoch(initial_epoch)
+        if hasattr(train_loader.batch_sampler, "set_epoch"):
+            train_loader.batch_sampler.set_epoch(initial_epoch)
+        else:
+            train_loader.batch_sampler.batch_sampler.set_epoch(initial_epoch)
     else:
         step, initial_epoch = 0, 0
-
     records = Records(
         ["train/loss_mean", "train/acc_mean"]
         + ["train/batch_time", "train/data_time", "train/grad_norm", "train/params_norm"]
         + [f"train/loss_{i}" for i in range(CONFIG.num_predicts)]
-        + [f"train/acc_{i}" for i in range(CONFIG.num_predicts)]
+        + [f"train/acc_{i}" for i in range(CONFIG.num_predicts)],
     )
-    pbar = tqdm(total=CONFIG.num_epochs * len(train_loader), initial=step)
+    pbar = tqdm(total=CONFIG.num_epochs * len(train_loader), initial=step, disable=not accelerator.is_main_process)
+    tqdm_update_interval = 1 if os.isatty(1) else CONFIG.log_interval
     for epoch in range(initial_epoch, CONFIG.num_epochs):
         pbar.set_description("Training")
         model.train()
@@ -100,13 +106,14 @@ def train(run_name: str, workdir: str, train_manifest: str, val_manifest: str, p
             optimizer.zero_grad(set_to_none=True)
             records["train/loss_mean"].update(losses.detach().mean().item())
             records["train/acc_mean"].update(accuracies.mean().item())
-            for i, (loss, acc) in enumerate(zip(losses.detach(), accuracies)):
+            for i, (loss, acc) in enumerate(zip(losses.detach(), accuracies, strict=True)):
                 records[f"train/loss_{i}"].update(loss.item())
                 records[f"train/acc_{i}"].update(acc.item())
             records["train/batch_time"].update(time.perf_counter() - tick)
             step += 1
             pbar.set_postfix(epoch=epoch, loss=records["train/loss_mean"].avg, acc=records["train/acc_mean"].avg)
-            pbar.update()
+            if step % tqdm_update_interval == 0:
+                pbar.update(tqdm_update_interval)
             if step % CONFIG.log_interval == 0:
                 accelerator.log(records.log() | {"epoch": epoch, "train/lr": lr}, step)
             tick = time.perf_counter()
@@ -116,4 +123,5 @@ def train(run_name: str, workdir: str, train_manifest: str, val_manifest: str, p
         pbar.set_description("Validation ongoing...")
         val_loss, val_acc = evaluation(model, criterion, val_loader)
         accelerator.log({"val/loss_mean": val_loss, "val/acc_mean": val_acc, "epoch": epoch}, step)
+        break
     accelerator.end_training()

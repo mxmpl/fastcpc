@@ -1,6 +1,9 @@
+"""Global module configuration."""
+
 import dataclasses
 import json
 import os
+from pathlib import Path
 from typing import Literal
 
 __all__ = ["CONFIG"]
@@ -31,7 +34,7 @@ class Configuration:
     @staticmethod
     def load_default() -> "Configuration":
         if "FASTCPC_CONFIG" in os.environ:
-            with open(os.environ["FASTCPC_CONFIG"], "r") as f:
+            with Path(os.environ["FASTCPC_CONFIG"]).open() as f:
                 return Configuration(**json.load(f))
         return Configuration()
 

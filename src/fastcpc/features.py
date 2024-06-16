@@ -1,3 +1,5 @@
+"""Extract features."""
+
 import csv
 from pathlib import Path
 
@@ -11,7 +13,9 @@ from .model import CPC
 
 @torch.inference_mode()
 def extract_features(model_path: str, manifest: str, output: str) -> None:
-    """The expected manifest file is a TSV file in the following format:
+    """Extract features using a pretrained model.
+
+    The expected manifest file is a TSV file in the following format:
     ```
     <root>
     <filename1> <number_of_samples1>
@@ -25,7 +29,7 @@ def extract_features(model_path: str, manifest: str, output: str) -> None:
     model.load_state_dict(torch.load(model_path, map_location=device))
     model = torch.compile(model)
 
-    with open(manifest, "r", newline="") as f:
+    with Path(manifest).open(newline="") as f:
         reader = csv.reader(f, delimiter="\t")
         src = Path(next(reader)[0])
         filenames = [Path(row[0]) for row in reader]
@@ -33,7 +37,8 @@ def extract_features(model_path: str, manifest: str, output: str) -> None:
     for filename in tqdm(filenames):
         path = src / filename
         waveform, sr = torchaudio.load(str(path))
-        assert sr == CONFIG.sample_rate, filename
+        if sr != CONFIG.sample_rate:
+            raise ValueError(filename)
         features = model.extract_features(waveform.to(device).unsqueeze(0)).squeeze().cpu()
         dest_path = dest / filename.with_suffix(".pt")
         dest_path.parent.mkdir(parents=True, exist_ok=True)

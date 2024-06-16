@@ -1,5 +1,7 @@
+"""CPC model: convolutional encoder, auto-regressive component and 1-layer Transofmer predictor."""
+
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 from huggingface_hub import PyTorchModelHubMixin
 from torch import Tensor, nn
 
@@ -19,14 +21,14 @@ class ConvLayerBlock(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         x = self.conv(x)
         x = self.layer_norm(x.permute(0, 2, 1)).permute(0, 2, 1)
-        x = F.relu(x)
-        return x
+        return F.relu(x)
 
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, din: int, dout: int, num_heads: int, dropout: float, block_size: int) -> None:
         super().__init__()
-        assert dout % num_heads == 0
+        if dout % num_heads != 0:
+            raise ValueError(str(dout % num_heads))
         self.num_heads = num_heads
         self.head_dim = din // num_heads
         self.dout = dout
@@ -43,12 +45,11 @@ class MultiHeadAttention(nn.Module):
         v = v.view(batch_size, seq_len, self.num_heads, self.head_dim)
         q = apply_rotary_emb(q, self.freqs_cis)
         k = apply_rotary_emb(k, self.freqs_cis)
-        q, k, v = map(lambda x: x.transpose(1, 2), (q, k, v))
+        q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
         dropout_p = 0.0 if not self.training else self.dropout
         y = F.scaled_dot_product_attention(q, k, v, dropout_p=dropout_p, is_causal=True)
         y = y.transpose(1, 2).contiguous().view(batch_size, seq_len, self.dout)
-        y = self.proj(y)
-        return y
+        return self.proj(y)
 
 
 class Predictor(nn.Module):
@@ -78,13 +79,15 @@ class Predictor(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         y: Tensor = self.ln_multihead(x + self.multihead(x))
-        B, S, _ = y.size()
-        x = self.fully_connected(y).view(B, S, self.num_predicts, self.hidden_size)
-        y = y.view(B, S, 1, self.hidden_size).expand(B, S, self.num_predicts, self.hidden_size)
+        b, s, _ = y.size()
+        x = self.fully_connected(y).view(b, s, self.num_predicts, self.hidden_size)
+        y = y.view(b, s, 1, self.hidden_size).expand(b, s, self.num_predicts, self.hidden_size)
         return self.ln_fully_connected(self.last_linear(x + y))
 
 
 class CPC(nn.Module, PyTorchModelHubMixin):
+    """CPC model: convolutional block, LSTM and 1-layer Transformer predictor."""
+
     def __init__(
         self,
         hidden_size: int = CONFIG.hidden_size,
@@ -122,7 +125,9 @@ class CPC(nn.Module, PyTorchModelHubMixin):
         )
 
     def forward(self, past: Tensor, future: Tensor) -> tuple[Tensor, Tensor]:
-        assert past.shape[2] == future.shape[2] == self.window_size
+        if not (past.shape[2] == future.shape[2] == self.window_size):
+            lengths = (past.shape[2], future.shape[2], self.window_size)
+            raise ValueError(str(lengths))
         latent = self.encoder(torch.cat((past, future), dim=0)).permute(0, 2, 1)
         latent_past, latent_future = torch.tensor_split(latent, 2, dim=0)
         contextual_past, _ = self.auto_regressive(latent_past)

@@ -1,3 +1,5 @@
+"""Audio data augmentation."""
+
 import numpy as np
 import torch
 from torchaudio import sox_effects
@@ -7,7 +9,17 @@ from .config import CONFIG
 __all__ = ["PitchReverbAugment"]
 
 
+class OutputShapeError(Exception):
+    def __init__(self, input_shape: torch.Size, output_shape: torch.Size) -> None:
+        super().__init__(
+            f"Shape after applying transformation ({output_shape}) differs "
+            f"by more than one frame from the input shape ({input_shape})."
+        )
+
+
 class PitchReverbAugment:
+    """Audio augmentation modifying pitch and reverb."""
+
     max_pitch_shift = 300
     max_reverberance = 100
     max_room_scale = 100
@@ -34,4 +46,4 @@ class PitchReverbAugment:
             return transformed[:, :-1]
         if transformed.shape[1] == waveform.shape[1] - 1:
             return torch.nn.functional.pad(transformed, (0, 1))
-        raise ValueError("Shape after applying effects differs by more than one frame")
+        raise OutputShapeError(waveform.shape, transformed.shape)
