@@ -2,7 +2,6 @@
 
 import dataclasses
 import importlib
-import os
 import time
 from pathlib import Path
 
@@ -52,7 +51,7 @@ def train(run_name: str, workdir: str, train_manifest: str, val_manifest: str, p
     seed = CONFIG.random_seed + accelerator.process_index
     model = CPC()
     criterion = CPCCriterion(torch.Generator(device=accelerator.device).manual_seed(seed))
-    optimizer = Adam(model.parameters(), lr=CONFIG.learning_rate)
+    optimizer = Adam(model.parameters(), lr=CONFIG.learning_rate, weight_decay=CONFIG.weight_decay)
     scheduler = lr_scheduler.LinearLR(optimizer, start_factor=0.1, end_factor=1, total_iters=CONFIG.scheduler_iters)
     transform = PitchReverbAugment(random_seed=seed)
     train_dataset = AudioSequenceDataset(train_manifest, transform=transform)
@@ -87,7 +86,6 @@ def train(run_name: str, workdir: str, train_manifest: str, val_manifest: str, p
         + [f"train/acc_{i}" for i in range(CONFIG.num_predicts)],
     )
     pbar = tqdm(total=CONFIG.num_epochs * len(train_loader), initial=step, disable=not accelerator.is_main_process)
-    tqdm_update_interval = 1 if os.isatty(1) else CONFIG.log_interval
     for epoch in range(initial_epoch, CONFIG.num_epochs):
         pbar.set_description("Training")
         model.train()
@@ -112,8 +110,7 @@ def train(run_name: str, workdir: str, train_manifest: str, val_manifest: str, p
             records["train/batch_time"].update(time.perf_counter() - tick)
             step += 1
             pbar.set_postfix(epoch=epoch, loss=records["train/loss_mean"].avg, acc=records["train/acc_mean"].avg)
-            if step % tqdm_update_interval == 0:
-                pbar.update(tqdm_update_interval)
+            pbar.update()
             if step % CONFIG.log_interval == 0:
                 accelerator.log(records.log() | {"epoch": epoch, "train/lr": lr}, step)
             tick = time.perf_counter()
@@ -123,5 +120,4 @@ def train(run_name: str, workdir: str, train_manifest: str, val_manifest: str, p
         pbar.set_description("Validation ongoing...")
         val_loss, val_acc = evaluation(model, criterion, val_loader)
         accelerator.log({"val/loss_mean": val_loss, "val/acc_mean": val_acc, "epoch": epoch}, step)
-        break
     accelerator.end_training()

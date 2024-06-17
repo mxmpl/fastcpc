@@ -28,6 +28,7 @@ class Configuration:
     num_workers: int = 4
     log_interval: int = 1000
     max_grad_norm: float = 1000
+    weight_decay: float = 0.01
     allow_overlap: bool = True
     wandb_mode: Literal["online", "offline", "disabled"] = "offline"
 
