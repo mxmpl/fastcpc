@@ -149,4 +149,4 @@ class AudioSequenceDataset(Dataset):
         if self.transform is not None:
             past, future = self.transform(waveform), waveform
             return past, future
-        return waveform, waveform
+        return waveform, waveform, metadata

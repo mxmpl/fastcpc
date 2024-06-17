@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from .augmentation import PitchReverbAugment
+from .callbacks import SpikeDetection
 from .config import CONFIG
 from .criterion import CPCCriterion
 from .data import AudioSequenceDataset, SameSpeakerBatchSampler
@@ -25,7 +26,7 @@ __all__ = ["train"]
 def evaluation(model: CPC, criterion: CPCCriterion, loader: DataLoader) -> tuple[float, float]:
     model.eval()
     total_loss, total_accuracy = 0, 0
-    for past, future in loader:
+    for past, future, _ in loader:
         predictions, latent = model(past, future)
         loss, accuracy = criterion(predictions, latent)
         total_loss += loss.mean().float().item()
@@ -85,15 +86,27 @@ def train(run_name: str, workdir: str, train_manifest: str, val_manifest: str, p
         + [f"train/loss_{i}" for i in range(CONFIG.num_predicts)]
         + [f"train/acc_{i}" for i in range(CONFIG.num_predicts)],
     )
+    spike_detection = SpikeDetection()
     pbar = tqdm(total=CONFIG.num_epochs * len(train_loader), initial=step, disable=not accelerator.is_main_process)
     for epoch in range(initial_epoch, CONFIG.num_epochs):
         pbar.set_description("Training")
         model.train()
         tick = time.perf_counter()
-        for past, future in train_loader:
+        for past, future, metadata in train_loader:
             records["train/data_time"].update(time.perf_counter() - tick)
             predictions, latent = model(past, future)
             losses, accuracies = criterion(predictions, latent)
+            if spike_detection.update(losses.sum()):
+                accelerator.print("Loss spike detected!")
+                accelerator.save_state(run_dir / "spike", safe_serialization=False)
+                accelerator.save(
+                    {"metadata": metadata, "past": past, "future": future, "losses": losses, "accuracies": accuracies},
+                    run_dir / "spike/data_and_losses.pkl",
+                )
+                accelerator.set_trigger()
+            if accelerator.check_trigger():
+                accelerator.end_training()
+                return
             accelerator.backward(losses.sum())
             if accelerator.sync_gradients:
                 total_norm = accelerator.clip_grad_norm_(model.parameters(), max_norm=CONFIG.max_grad_norm)
