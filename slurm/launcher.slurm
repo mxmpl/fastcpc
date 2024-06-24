@@ -2,8 +2,8 @@
 #SBATCH --job-name=fastcpc
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1     # crucial - only 1 task per node
-#SBATCH --cpus-per-task=40
-#SBATCH --gres=gpu:4
+#SBATCH --cpus-per-task=80
+#SBATCH --gres=gpu:8
 #SBATCH --time=20:00:00
 #SBATCH --output=%x-%j.out
 
@@ -14,7 +14,7 @@ module purge
 eval "$(micromamba shell hook --shell bash)"
 micromamba activate fastcpc
 
-GPUS_PER_NODE=4
+GPUS_PER_NODE=8
 MASTER_PORT=6000
 MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
 NUM_PROCESSES=$(($SLURM_NNODES * $GPUS_PER_NODE))
@@ -27,6 +27,8 @@ export TRITON_CACHE_DIR=$HOME/.cache/triton # Important - avoids OOM error when 
 
 # note `\$SLURM_PROCID` we don't want it interpolated till `srun` since otherwise all nodes will get
 # 0 and the launcher will hang
+export FASTCPC_CONFIG=$HOME/fastcpc/configs/cpc_small.json
+
 LAUNCHER="python -u -m accelerate.commands.launch \
     --rdzv_conf "rdzv_backend=c10d,rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT" \
     --config_file $ACCELERATE_CONFIG_FILE \
